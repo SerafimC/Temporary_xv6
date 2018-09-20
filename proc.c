@@ -14,7 +14,7 @@ struct {
 
 static struct proc *initproc;
 
-int nextpid = 1;
+int nextpid = 1, totalTickets = 0, LastProcess = 0;
 extern void forkret(void);
 extern void trapret(void);
 
@@ -212,6 +212,12 @@ fork(void)
 
   pid = np->pid;
 
+  np->tickets = 1;
+  cprintf("tickets: %d tks \n", np->tickets);
+
+  totalTickets += np->tickets;
+  cprintf("Total tickets: %d tks \n", totalTickets);
+
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
@@ -332,26 +338,19 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+      p = &ptable.proc[rand()];
+      if(p->state == RUNNABLE) {
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+        //cprintf("LastProcess: %d\n", LastProcess);
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
-
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
+        c->proc = 0;
+      }
+      release(&ptable.lock);
   }
 }
 
@@ -488,6 +487,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
+      totalTickets -= p->tickets;
       release(&ptable.lock);
       return 0;
     }
@@ -531,4 +531,15 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int rand(){
+  int i = LastProcess;
+  if(i == NPROC -1){
+    LastProcess = 0;
+  } else {
+    LastProcess = i+1;
+  }
+
+  return totalTickets - LastProcess;
 }
