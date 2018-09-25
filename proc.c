@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "rand.h"
 
 struct {
   struct spinlock lock;
@@ -15,6 +16,8 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1, totalTickets = 0, LastProcess = 0;
+int loterry[10000];
+
 extern void forkret(void);
 extern void trapret(void);
 
@@ -210,19 +213,19 @@ fork(void)
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
-  pid = np->pid;
-
-  np->tickets = 1;
-  cprintf("tickets: %d tks \n", np->tickets);
-
-  totalTickets += np->tickets;
-  cprintf("Total tickets: %d tks \n", totalTickets);
+  pid = np->pid; 
 
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
 
+  np->tickets = 10;
+  cprintf("tickets: %d tks \n", np->tickets);
+
+
   release(&ptable.lock);
+
+
 
   return pid;
 }
@@ -332,27 +335,57 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   
-  for(;;){
+   for(;;){
     // Enable interrupts on this processor.
     sti();
 
+    totalTickets = 0;
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+      p->firstTicket = totalTickets;
+      totalTickets = totalTickets + p->tickets;
+      int firstIndexTicket = p->firstTicket;
+      int lastIndexTicket = firstIndexTicket + p->tickets;
+      
+      cprintf("\nFirst ticket of process %d is %d \n",p->pid, p->firstTicket);
+      cprintf("Last ticket of process %d is %d \n", p->pid, p->firstTicket + p->tickets);
+      cprintf("Total tickets on loterry: %d tks \n", totalTickets);
+
+      for(int i=firstIndexTicket;i<=lastIndexTicket;i++){
+        loterry[i] = p->pid;
+        cprintf("Added ticket on loterry: [%d][%d] \n", i+1 , p->pid);
+      }    
+    }
+    long winner = loterry[random_at_most(totalTickets)];
+    //cprintf("Winner is %d \n", winner);
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-      p = &ptable.proc[rand()];
-      if(p->state == RUNNABLE) {
-        c->proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+      if(p->pid != winner)
+        continue;
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
 
-        //cprintf("LastProcess: %d\n", LastProcess);
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+      
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&ptable.lock);
 
-        swtch(&(c->scheduler), p->context);
-        switchkvm();
-        c->proc = 0;
-      }
-      release(&ptable.lock);
   }
 }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -533,13 +566,15 @@ procdump(void)
   }
 }
 
-int rand(){
-  int i = LastProcess;
-  if(i == NPROC -1){
-    LastProcess = 0;
-  } else {
-    LastProcess = i+1;
-  }
+// int
+// rand(){
+//   int i = LastProcess;
+//   if(i == NPROC -1){
+//     LastProcess = 0;
+//   } else {
+//     LastProcess = i+1;
+//   }
 
-  return totalTickets - LastProcess;
-}
+//   return totalTickets - LastProcess;
+// }
+
