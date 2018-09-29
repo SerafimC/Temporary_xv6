@@ -91,6 +91,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->tickets = 10;
 
   release(&ptable.lock);
 
@@ -218,9 +219,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-
-  np->tickets = 10;
-  cprintf("tickets: %d tks \n", np->tickets);
+  //cprintf("tickets: %d tks \n", np->tickets);
 
 
   release(&ptable.lock);
@@ -335,7 +334,7 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   
-   for(;;){
+  for(;;){
     // Enable interrupts on this processor.
     sti();
 
@@ -349,13 +348,13 @@ scheduler(void)
       int firstIndexTicket = p->firstTicket;
       int lastIndexTicket = firstIndexTicket + p->tickets;
       
-      cprintf("\nFirst ticket of process %d is %d \n",p->pid, p->firstTicket);
-      cprintf("Last ticket of process %d is %d \n", p->pid, p->firstTicket + p->tickets);
-      cprintf("Total tickets on loterry: %d tks \n", totalTickets);
+      // cprintf("\nFirst ticket of process %d is %d \n",p->pid, p->firstTicket);
+      // cprintf("Last ticket of process %d is %d \n", p->pid, p->firstTicket + p->tickets);
+      // cprintf("Total tickets on loterry: %d tks \n", totalTickets);
 
       for(int i=firstIndexTicket;i<=lastIndexTicket;i++){
         loterry[i] = p->pid;
-        cprintf("Added ticket on loterry: [%d][%d] \n", i+1 , p->pid);
+        // cprintf("Added ticket on loterry: [%d][%d] \n", i+1 , p->pid);
       }    
     }
     long winner = loterry[random_at_most(totalTickets)];
@@ -566,15 +565,16 @@ procdump(void)
   }
 }
 
-// int
-// rand(){
-//   int i = LastProcess;
-//   if(i == NPROC -1){
-//     LastProcess = 0;
-//   } else {
-//     LastProcess = i+1;
-//   }
 
-//   return totalTickets - LastProcess;
-// }
+int sys_settickets(int n)
+{
+  struct proc *curproc = myproc();
 
+  if(argint(0, &n) < 0)
+    return -1;
+
+  curproc->tickets = n;
+
+  return n;
+
+}
