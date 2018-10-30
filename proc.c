@@ -95,7 +95,7 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->tickets = 10;
-  p->step = p->tickets;
+  p->step = CONSTANT / p->tickets;
 
   release(&ptable.lock);
 
@@ -554,6 +554,9 @@ int sys_settickets(int n)
   if (n <= 1000) {
     curproc->tickets = n;
     //cprintf("PID %d - %d tickets - %d step\n", curproc->pid, curproc->tickets, curproc->step);
+    return n;
+  } else if (n > 1000){
+    curproc->tickets = 1000;
     return n;
   }
   
