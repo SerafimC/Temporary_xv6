@@ -11,14 +11,16 @@ main(void)
 
   if(pid != 0 ){
     if(fork() != 0 ){
-      for(;;){printf(2, "OTHER SONNNNN\n", pid);}
+      settickets(20);
+      for(;;){printf(2, "PROCESS 2\n");}
     }
-    for(;;){printf(2, "fork!! %d\n", pid);}
+    settickets(30);
+    for(;;){printf(2, "PROCESS 3\n");}
   }
   
- settickets(1000);
+ settickets(10);
 //  printf(2, "Tickest %d\n", tickets);
- for(;;){printf(2, "father!!\n", 1);}
+ for(;;){printf(2, "PROCESS 1\n", 1);}
 
   
 }

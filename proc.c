@@ -8,6 +8,7 @@
 #include "spinlock.h"
 #include "rand.h"
 
+#define CONSTANT 10000
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -20,6 +21,8 @@ int loterry[10000];
 
 extern void forkret(void);
 extern void trapret(void);
+
+struct proc* stride_scheduling();
 
 static void wakeup1(void *chan);
 
@@ -92,6 +95,7 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->tickets = 10;
+  p->step = p->tickets;
 
   release(&ptable.lock);
 
@@ -334,52 +338,26 @@ scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
   
-  for(;;){
+  for(;;) {
     // Enable interrupts on this processor.
     sti();
 
-    totalTickets = 0;
-
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-      p->firstTicket = totalTickets;
-      totalTickets = totalTickets + p->tickets;
-      int firstIndexTicket = p->firstTicket;
-      int lastIndexTicket = firstIndexTicket + p->tickets;
-      
-      // cprintf("\nFirst ticket of process %d is %d \n",p->pid, p->firstTicket);
-      // cprintf("Last ticket of process %d is %d \n", p->pid, p->firstTicket + p->tickets);
-      // cprintf("Total tickets on loterry: %d tks \n", totalTickets);
-
-      for(int i=firstIndexTicket;i<=lastIndexTicket;i++){
-        loterry[i] = p->pid;
-        // cprintf("Added ticket on loterry: [%d][%d] \n", i+1 , p->pid);
-      }    
-    }
-    long winner = loterry[random_at_most(totalTickets)];
-    //cprintf("Winner is %d \n", winner);
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-      if(p->pid != winner)
-        continue;
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
+    p = stride_scheduling();
+
+    if(p->state == RUNNABLE){
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
 
+      p->step += CONSTANT / p->tickets;
+
       swtch(&(c->scheduler), p->context);
       switchkvm();
-      
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
+    
       c->proc = 0;
     }
+
     release(&ptable.lock);
 
   }
@@ -519,7 +497,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
-      totalTickets -= p->tickets;
+
       release(&ptable.lock);
       return 0;
     }
@@ -573,8 +551,40 @@ int sys_settickets(int n)
   if(argint(0, &n) < 0)
     return -1;
 
-  curproc->tickets = n;
+  if (n <= 1000) {
+    curproc->tickets = n;
+    //cprintf("PID %d - %d tickets - %d step\n", curproc->pid, curproc->tickets, curproc->step);
+    return n;
+  }
+  
+  return -1;
+}
 
-  return n;
+struct proc* stride_scheduling() {
+  struct proc *p, *q, *s;
+  int low = -1;
 
+  s = ptable.proc;
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+
+    if(p->step + p->tickets > CONSTANT) {
+      for(q = ptable.proc; q < &ptable.proc[NPROC]; q++){
+        q->step = q->tickets;
+      }
+    }
+    
+    if(p->state == RUNNABLE && low < 0 ){
+      s = p;
+      low = p->step;
+    }
+
+    if(p->state == RUNNABLE && p->step < low) {
+      s = p;
+      low = p->step;
+    }
+
+  }
+  
+  return s;
 }
